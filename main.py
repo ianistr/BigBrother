@@ -60,6 +60,7 @@ def create_message(message: MessageCreate):
             "content": message.content, 
             "timestamp": db_message.timestamp
         }
+   
     
     except Exception as e:
         # Rollback in case of error
@@ -68,3 +69,11 @@ def create_message(message: MessageCreate):
     finally:
         # Close the session
         db.close()
+
+
+@app.get("/messages")
+def read_messages():
+        db = SessionLocal()
+        messages = db.query(MessageModel).all()
+        db.close()
+        return messages
