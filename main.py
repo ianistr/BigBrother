@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, Header, HTTPException,Depends
 from pydantic import BaseModel
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
 from sqlalchemy.ext.declarative import declarative_base
@@ -6,6 +6,14 @@ from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 import os
 import uuid
+from typing import Optional
+
+API_KEY="ianisaremere"
+
+async def verify_api_key(x_api_key: Optional[str] = Header(None)):
+    if x_api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+    return x_api_key
 
 # Use Railway's database connection string
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./local.db')
@@ -33,7 +41,7 @@ app = FastAPI()
 # Ensure tables are created
 Base.metadata.create_all(bind=engine)
 
-@app.post("/messages")
+@app.post("/messages", dependencies=[Depends(verify_api_key)])
 def create_message(message: MessageCreate):
     """
     Endpoint to post a new message
@@ -71,7 +79,7 @@ def create_message(message: MessageCreate):
         db.close()
 
 
-@app.get("/messages")
+@app.get("/messages", dependencies=[Depends(verify_api_key)])
 def read_messages():
         db = SessionLocal()
         messages = db.query(MessageModel).all()
