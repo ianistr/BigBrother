@@ -85,3 +85,21 @@ def read_messages():
         messages = db.query(MessageModel).all()
         db.close()
         return messages
+
+@app.delete("/messages", dependencies=[Depends(verify_api_key)])
+def delete_all_messages():
+    """
+    Endpoint to delete all messages from the database.
+    This does not disable the database from receiving new messages.
+    """
+    db = SessionLocal()
+    try:
+        # Delete all messages
+        deleted = db.query(MessageModel).delete()
+        db.commit()
+        return {"detail": f"All messages deleted successfully. Total deleted: {deleted}"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        db.close()
