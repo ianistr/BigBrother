@@ -1,10 +1,11 @@
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import create_engine, Column, Integer, String, DateTime
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from datetime import datetime
 import os
+import uuid
 
 # Use Railway's database connection string
 DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite:///./local.db')
@@ -14,68 +15,56 @@ engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
-# Data Model
-class DataEntry(Base):
-    __tablename__ = "entries"
+# Message Model
+class MessageModel(Base):
+    __tablename__ = "messages"
     
-    id = Column(Integer, primary_key=True, index=True)
-    key = Column(String, unique=True, index=True)
-    value = Column(String)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    id = Column(String, primary_key=True)  # Use UUID as primary key
+    content = Column(Text, nullable=False)
+    timestamp = Column(DateTime, default=datetime.utcnow)
 
-# Pydantic Model for Validation
-class EntryModel(BaseModel):
-    key: str
-    value: str
+# Pydantic Model for Request Validation
+class MessageCreate(BaseModel):
+    content: str
 
-# Create FastAPI App
+# FastAPI App
 app = FastAPI()
 
 # Ensure tables are created
 Base.metadata.create_all(bind=engine)
 
-@app.put("/entries/{key}")
-def create_or_update_entry(key: str, entry: EntryModel):
+@app.post("/messages")
+def create_message(message: MessageCreate):
     """
-    Create or update an entry with a specific key
+    Endpoint to post a new message
+    Each message gets a unique ID and is stored in a separate row
     """
     db = SessionLocal()
     
     try:
-        # Check if entry exists
-        existing_entry = db.query(DataEntry).filter(DataEntry.key == key).first()
+        # Generate a unique ID for each message
+        message_id = str(uuid.uuid4())
         
-        if existing_entry:
-            # Update existing entry
-            existing_entry.value = entry.value
-        else:
-            # Create new entry
-            new_entry = DataEntry(key=key, value=entry.value)
-            db.add(new_entry)
+        # Create new message model instance
+        db_message = MessageModel(
+            id=message_id, 
+            content=message.content
+        )
         
+        # Add to database and commit
+        db.add(db_message)
         db.commit()
-        return {"key": key, "value": entry.value, "status": "success"}
+        
+        return {
+            "id": message_id, 
+            "content": message.content, 
+            "timestamp": db_message.timestamp
+        }
     
     except Exception as e:
+        # Rollback in case of error
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
     finally:
-        db.close()
-
-@app.get("/entries/{key}")
-def get_entry(key: str):
-    """
-    Retrieve an entry by key
-    """
-    db = SessionLocal()
-    
-    try:
-        entry = db.query(DataEntry).filter(DataEntry.key == key).first()
-        
-        if not entry:
-            raise HTTPException(status_code=404, detail="Entry not found")
-        
-        return {"key": entry.key, "value": entry.value}
-    
-    finally:
+        # Close the session
         db.close()
